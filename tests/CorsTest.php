@@ -15,23 +15,36 @@
 
 namespace SfpTest\CorsMiddleware;
 
-use Psr\Http\Message\RequestInterface;
+use PHPUnit\Framework\TestCase;
+
+use Interop\Http\ServerMiddleware\DelegateInterface;
 use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 use Psr\Log\NullLogger;
 
-use Zend\Diactoros\Request;
+use Zend\Diactoros\ServerRequest as Request;
 use Zend\Diactoros\Response;
 use Zend\Diactoros\Uri;
 
 use Sfp\CorsMiddleware\Cors;
 
-class CorsTest extends \PHPUnit_Framework_TestCase
+class CorsTest extends TestCase
 {
+    private $delegate;
+    private $defaultResponse;
 
-    public function testShouldBeTrue()
+    public function setUp()
     {
-        $this->assertTrue(true);
+        $this->delegate = new class implements DelegateInterface {
+            public function process(ServerRequestInterface $request)
+            {
+               return new \Zend\Diactoros\Response();
+            }
+        };
+
+        $this->defaultResponse = new Response;
     }
+
 
     public function testShouldReturn200ByDefault()
     {
@@ -39,17 +52,10 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             ->withUri(new Uri("https://example.com/api"))
             ->withMethod("GET");
 
-        $response = new Response;
-        $cors = new Cors([]);
+        $cors = new Cors([], $this->defaultResponse);
 
-        $next = function (Request $request, Response $response) {
-            $response->getBody()->write("Foo");
-            return $response;
-        };
-
-        $response = $cors($request, $response, $next);
+        $response = $cors->process($request, $this->delegate);
         $this->assertEquals(200, $response->getStatusCode());
-        //$this->assertEquals("", $response->getBody());
     }
 
     public function testShouldHaveCorsHeaders()
@@ -59,7 +65,6 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             ->withMethod("GET")
             ->withHeader("Origin", "http://www.example.com");
 
-        $response = new Response;
         $cors = new Cors([
             "origin" => "*",
             "methods" => ["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -67,14 +72,9 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             "headers.expose" => ["Authorization", "Etag"],
             "credentials" => true,
             "cache" => 86400
-        ]);
+        ], $this->defaultResponse);
 
-        $next = function (Request $request, Response $response) {
-            $response->getBody()->write("Foo");
-            return $response;
-        };
-
-        $response = $cors($request, $response, $next);
+        $response = $cors->process($request, $this->delegate);
         $this->assertEquals("http://www.example.com", $response->getHeaderLine("Access-Control-Allow-Origin"));
         $this->assertEquals("true", $response->getHeaderLine("Access-Control-Allow-Credentials"));
         $this->assertEquals("Origin", $response->getHeaderLine("Vary"));
@@ -88,7 +88,6 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             ->withMethod("GET")
             ->withHeader("Origin", "http://www.foo.com");
 
-        $response = new Response;
         $cors = new Cors([
             "origin" => "http://www.example.com",
             "methods" => ["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -96,14 +95,9 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             "headers.expose" => ["Authorization", "Etag"],
             "credentials" => true,
             "cache" => 86400
-        ]);
+        ], $this->defaultResponse);
 
-        $next = function (Request $request, Response $response) {
-            $response->getBody()->write("Foo");
-            return $response;
-        };
-
-        $response = $cors($request, $response, $next);
+        $response = $cors->process($request, $this->delegate);
         $this->assertEquals(401, $response->getStatusCode());
     }
 
@@ -114,7 +108,6 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             ->withMethod("GET")
             ->withHeader("Origin", "http://mobile.example.com");
 
-        $response = new Response;
         $cors = new Cors([
             "origin" => ["http://www.example.com", "http://mobile.example.com"],
             "methods" => ["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -122,14 +115,9 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             "headers.expose" => ["Authorization", "Etag"],
             "credentials" => true,
             "cache" => 86400
-        ]);
+        ], $this->defaultResponse);
 
-        $next = function (Request $request, Response $response) {
-            $response->getBody()->write("Foo");
-            return $response;
-        };
-
-        $response = $cors($request, $response, $next);
+        $response = $cors->process($request, $this->delegate);
         $this->assertEquals(200, $response->getStatusCode());
     }
 
@@ -142,7 +130,6 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             ->withHeader("Access-Control-Request-Headers", "Authorization")
             ->withHeader("Access-Control-Request-Method", "PUT");
 
-        $response = new Response;
         $cors = new Cors([
             "origin" => ["*"],
             "methods" => ["GET", "POST", "DELETE"],
@@ -150,14 +137,9 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             "headers.expose" => ["Authorization", "Etag"],
             "credentials" => true,
             "cache" => 86400
-        ]);
+        ], $this->defaultResponse);
 
-        $next = function (Request $request, Response $response) {
-            $response->getBody()->write("Foo");
-            return $response;
-        };
-
-        $response = $cors($request, $response, $next);
+        $response = $cors->process($request, $this->delegate);
 
         $this->assertEquals(401, $response->getStatusCode());
     }
@@ -171,24 +153,18 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             ->withHeader("Access-Control-Request-Headers", "Authorization")
             ->withHeader("Access-Control-Request-Method", "PUT");
 
-        $response = new Response;
         $cors = new Cors([
             "origin" => ["*"],
-            "methods" => function ($request, $response) {
+            "methods" => function ($request) {
                 return ["GET", "POST", "DELETE"];
             },
             "headers.allow" => ["Authorization", "If-Match", "If-Unmodified-Since"],
             "headers.expose" => ["Authorization", "Etag"],
             "credentials" => true,
             "cache" => 86400
-        ]);
+        ], $this->defaultResponse);
 
-        $next = function (Request $request, Response $response) {
-            $response->getBody()->write("Foo");
-            return $response;
-        };
-
-        $response = $cors($request, $response, $next);
+        $response = $cors->process($request, $this->delegate);
 
         $this->assertEquals(401, $response->getStatusCode());
     }
@@ -202,24 +178,18 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             ->withHeader("Access-Control-Request-Headers", "Authorization")
             ->withHeader("Access-Control-Request-Method", "PUT");
 
-        $response = new Response;
         $cors = new Cors([
             "origin" => ["*"],
-            "methods" => function ($request, $response) {
+            "methods" => function ($request) {
                 return ["GET", "POST", "DELETE", "PUT"];
             },
             "headers.allow" => ["Authorization", "If-Match", "If-Unmodified-Since"],
             "headers.expose" => ["Authorization", "Etag"],
             "credentials" => true,
             "cache" => 86400
-        ]);
+        ], $this->defaultResponse);
 
-        $next = function (Request $request, Response $response) {
-            $response->getBody()->write("Foo");
-            return $response;
-        };
-
-        $response = $cors($request, $response, $next);
+        $response = $cors->process($request, $this->delegate);
 
         $this->assertEquals(200, $response->getStatusCode());
     }
@@ -233,7 +203,6 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             ->withHeader("Access-Control-Request-Headers", "X-Nosuch")
             ->withHeader("Access-Control-Request-Method", "PUT");
 
-        $response = new Response;
         $cors = new Cors([
             "origin" => ["*"],
             "methods" => ["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -241,17 +210,12 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             "headers.expose" => ["Authorization", "Etag"],
             "credentials" => true,
             "cache" => 86400,
-            "error" => function ($request, $response, $arguments) {
+            "error" => function ($analysisResultError) {
                 return "ignored";
             }
-        ]);
+        ], $this->defaultResponse);
 
-        $next = function (Request $request, Response $response) {
-            $response->getBody()->write("Foo");
-            return $response;
-        };
-
-        $response = $cors($request, $response, $next);
+        $response = $cors->process($request, $this->delegate);
         $this->assertEquals(401, $response->getStatusCode());
     }
 
@@ -264,7 +228,6 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             ->withHeader("Access-Control-Request-Headers", "Authorization")
             ->withHeader("Access-Control-Request-Method", "PUT");
 
-        $response = new Response;
         $cors = new Cors([
             "origin" => ["*"],
             "methods" => ["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -272,14 +235,9 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             "headers.expose" => ["Authorization", "Etag"],
             "credentials" => true,
             "cache" => 86400
-        ]);
+        ], $this->defaultResponse);
 
-        $next = function (Request $request, Response $response) {
-            $response->getBody()->write("Foo");
-            return $response;
-        };
-
-        $response = $cors($request, $response, $next);
+        $response = $cors->process($request, $this->delegate);
         $this->assertEquals(200, $response->getStatusCode());
     }
 
@@ -292,7 +250,6 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             ->withHeader("Access-Control-Request-Headers", "X-Nosuch")
             ->withHeader("Access-Control-Request-Method", "PUT");
 
-        $response = new Response;
         $logger = new NullLogger;
         $cors = new Cors([
             "logger" => $logger,
@@ -302,25 +259,22 @@ class CorsTest extends \PHPUnit_Framework_TestCase
             "headers.expose" => ["Authorization", "Etag"],
             "credentials" => true,
             "cache" => 86400,
-            "error" => function ($request, $response, $arguments) {
+            "error" => function ($analysisResultError) {
+                $response = new Response;
                 $response->getBody()->write("Error");
                 return $response;
             }
-        ]);
+        ], $this->defaultResponse);
 
-        $next = function (Request $request, Response $response) {
-            $response->getBody()->write("Foo");
-            return $response;
-        };
 
-        $response = $cors($request, $response, $next);
+        $response = $cors->process($request, $this->delegate);
         $this->assertEquals(401, $response->getStatusCode());
         $this->assertEquals("Error", $response->getBody());
     }
 
     public function testShouldSetAndGetError()
     {
-        $cors = new Cors([]);
+        $cors = new Cors([], $this->defaultResponse);
         $cors->setError(function () {
             return "error";
         });
@@ -331,7 +285,7 @@ class CorsTest extends \PHPUnit_Framework_TestCase
     public function testShouldSetAndGetLogger()
     {
         $logger = new NullLogger;
-        $cors = new Cors([]);
+        $cors = new Cors([], $this->defaultResponse);
         $cors->setLogger($logger);
         $this->assertInstanceOf("Psr\Log\NullLogger", $cors->getLogger());
     }

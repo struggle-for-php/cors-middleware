@@ -19,11 +19,14 @@ use Neomerx\Cors\Analyzer;
 use Neomerx\Cors\Contracts\AnalysisResultInterface;
 use Neomerx\Cors\Strategies\Settings;
 
-use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 
-class Cors
+use Interop\Http\ServerMiddleware\DelegateInterface;
+use Interop\Http\ServerMiddleware\MiddlewareInterface as ServerMiddlewareInterface;
+
+class Cors implements ServerMiddlewareInterface
 {
     private $options = [
         "origin" => "*",
@@ -37,40 +40,36 @@ class Cors
 
     private $settings;
 
+    private $defaultResponse;
+
     protected $logger;
 
-    public function __construct($options)
+    public function __construct(array $options, ResponseInterface $defaultResponse)
     {
         $this->settings = new Settings;
 
         /* Store passed in options overwriting any defaults. */
         $this->hydrate($options);
+        $this->defaultResponse = $defaultResponse;
     }
 
-    public function __invoke(RequestInterface $request, ResponseInterface $response, callable $next)
+    public function process(ServerRequestInterface $request, DelegateInterface $delegate)
     {
-
-        $analyzer = Analyzer::instance($this->buildSettings($request, $response));
+        $analyzer = Analyzer::instance($this->buildSettings($request));
         if ($this->logger) {
             $analyzer->setLogger($this->logger);
         }
         $cors = $analyzer->analyze($request);
 
+
         switch ($cors->getRequestType()) {
             case AnalysisResultInterface::ERR_ORIGIN_NOT_ALLOWED:
-                return $this->error($request, $response, [
-                    "message" => "CORS request origin is not allowed.",
-                ])->withStatus(401);
             case AnalysisResultInterface::ERR_METHOD_NOT_SUPPORTED:
-                return $this->error($request, $response, [
-                    "message" => "CORS requested method is not supported.",
-                ])->withStatus(401);
             case AnalysisResultInterface::ERR_HEADERS_NOT_SUPPORTED:
-                return $this->error($request, $response, [
-                    "message" => "CORS requested header is not allowed.",
-                ])->withStatus(401);
+                return $this->error($cors->getRequestType());
             case AnalysisResultInterface::TYPE_PRE_FLIGHT_REQUEST:
                 $cors_headers = $cors->getResponseHeaders();
+                $response = $this->defaultResponse;
                 foreach ($cors_headers as $header => $value) {
                     /* Diactoros errors on integer values. */
                     if (false === is_array($value)) {
@@ -80,10 +79,10 @@ class Cors
                 }
                 return $response->withStatus(200);
             case AnalysisResultInterface::TYPE_REQUEST_OUT_OF_CORS_SCOPE:
-                return $next($request, $response);
+                return $delegate->process($request);
             default:
                 /* Actual CORS request. */
-                $response = $next($request, $response);
+                $response = $delegate->process($request);
                 $cors_headers = $cors->getResponseHeaders();
                 foreach ($cors_headers as $header => $value) {
                     /* Diactoros errors on integer values. */
@@ -116,13 +115,13 @@ class Cors
         return $this;
     }
 
-    private function buildSettings(RequestInterface $request, ResponseInterface $response)
+    private function buildSettings(ServerRequestInterface $request)
     {
         $origin = array_fill_keys((array) $this->options["origin"], true);
         $this->settings->setRequestAllowedOrigins($origin);
 
         if (is_callable($this->options["methods"])) {
-            $methods = (array) $this->options["methods"]($request, $response);
+            $methods = (array) $this->options["methods"]($request);
         } else {
             $methods = $this->options["methods"];
         }
@@ -188,6 +187,7 @@ class Cors
     /**
      * Set the logger
      *
+     * @param LoggerInterface $logger
      * @return self
      */
     public function setLogger(LoggerInterface $logger = null)
@@ -199,7 +199,7 @@ class Cors
     /**
      * Get the logger
      *
-     * @return Psr\Log\LoggerInterface
+     * @return \Psr\Log\LoggerInterface
      */
     public function getLogger()
     {
@@ -230,16 +230,19 @@ class Cors
     /**
      * Call the error handler if it exists
      *
-     * @return Psr\Http\Message\ResponseInterface
+     * @param int $analysisResultError
+     * @return \Psr\Http\Message\ResponseInterface
      */
-    public function error(RequestInterface $request, ResponseInterface $response, $arguments)
+    public function error($analysisResultError)
     {
         if (is_callable($this->options["error"])) {
-            $handler_response = $this->options["error"]($request, $response, $arguments);
-            if (is_a($handler_response, "\Psr\Http\Message\ResponseInterface")) {
-                return $handler_response;
+            /** @var \Psr\Http\Message\ResponseInterface $handler_response */
+            $handler_response = $this->options["error"]($analysisResultError);
+            if ($handler_response instanceof ResponseInterface) {
+                return $handler_response->withStatus(401);
             }
         }
-        return $response;
+
+        return $this->defaultResponse->withStatus(401);
     }
 }
