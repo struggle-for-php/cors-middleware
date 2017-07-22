@@ -13,7 +13,7 @@
  *
  */
 
-namespace Tuupola\Middleware;
+namespace Sfp\CorsMiddleware;
 
 use Neomerx\Cors\Analyzer;
 use Neomerx\Cors\Contracts\AnalysisResultInterface;

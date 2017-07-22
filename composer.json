@@ -1,12 +1,11 @@
 {
-    "name": "tuupola/cors-middleware",
+    "name": "sfp/middleware-cors",
     "description": "PSR-7 CORS Middleware",
     "keywords": [
-        "slim",
         "middleware",
         "cors"
     ],
-    "homepage": "https://github.com/tuupola/cors-middleware",
+    "homepage": "https://github.com/struggle-for-php/sfp-cors-middleware",
     "license": "MIT",
     "authors": [
         {
@@ -17,21 +16,21 @@
         }
     ],
     "require": {
-        "php" : "^5.5 || ^7.0",
+        "php" : "^7.1",
         "neomerx/cors-psr7": "^1.0"
     },
     "autoload": {
         "psr-4": {
-            "Tuupola\\Middleware\\": "src"
+            "Sfp\\CorsMiddleware\\": "src"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Tuupola\\Middleware\\": "tests"
+            "SfpTest\\CorsMiddleware\\": "tests"
         }
     },
     "require-dev": {
-        "zendframework/zend-diactoros": "^1.3",
+        "zendframework/zend-diactoros": "^1.4",
         "squizlabs/php_codesniffer": "^2.5",
         "phpunit/phpunit": "^4.8"
     }
