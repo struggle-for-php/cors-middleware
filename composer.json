@@ -1,5 +1,5 @@
 {
-    "name": "sfp/middleware-cors",
+    "name": "sfp/sfp-cors-middleware",
     "description": "PSR-7 CORS Middleware",
     "keywords": [
         "middleware",
