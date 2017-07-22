@@ -1,5 +1,5 @@
 {
-    "name": "sfp/sfp-cors-middleware",
+    "name": "struggle-for-php/sfp-cors-middleware",
     "description": "PSR-7 CORS Middleware",
     "keywords": [
         "middleware",
